@@ -3,3 +3,7 @@ target/
 .mvn/
 !.mvn/wrapper/maven-wrapper.properties
 HELP.md
+
+# Local secrets / machine overrides
+src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
