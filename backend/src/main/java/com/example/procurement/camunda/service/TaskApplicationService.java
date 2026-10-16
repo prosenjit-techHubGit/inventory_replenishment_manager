@@ -110,9 +110,44 @@ public class TaskApplicationService {
     }
 
     private Map<String, Object> dispatchPurchaseOrderTask(UserTask task, TaskCompletionRequest request, String actingUserId) {
-        PurchaseOrder po = purchaseOrderRepository.findByPoRequestId(task.getBusinessId())
-                .orElseThrow(() -> new NotFoundException("No purchase order found for task " + task.getUserTaskKey()));
+        PurchaseOrder po = resolvePurchaseOrder(task);
         return dispatch(task.getElementId(), po.getId(), request, actingUserId);
+    }
+
+    /**
+     * Message-start instances do not always carry a Camunda business key. Fall back to the
+     * process variables published with CREATE_PURCHASE_ORDER ({@code poRequestId} / {@code purchaseOrderId}).
+     */
+    private PurchaseOrder resolvePurchaseOrder(UserTask task) {
+        if (task.getBusinessId() != null && !task.getBusinessId().isBlank()) {
+            var byBusinessId = purchaseOrderRepository.findByPoRequestId(task.getBusinessId());
+            if (byBusinessId.isPresent()) {
+                return byBusinessId.get();
+            }
+        }
+        Map<String, Object> variables = loadTaskVariables(task.getUserTaskKey());
+        Object poRequestId = variables.get("poRequestId");
+        if (poRequestId != null && !poRequestId.toString().isBlank()) {
+            var byRequestId = purchaseOrderRepository.findByPoRequestId(stripJsonQuotes(poRequestId.toString()));
+            if (byRequestId.isPresent()) {
+                return byRequestId.get();
+            }
+        }
+        Object purchaseOrderId = variables.get("purchaseOrderId");
+        if (purchaseOrderId != null && !purchaseOrderId.toString().isBlank()) {
+            UUID id = UUID.fromString(stripJsonQuotes(purchaseOrderId.toString()));
+            return purchaseOrderRepository.findById(id)
+                    .orElseThrow(() -> new NotFoundException("No purchase order found for id " + id));
+        }
+        throw new NotFoundException("No purchase order found for task " + task.getUserTaskKey());
+    }
+
+    private static String stripJsonQuotes(String value) {
+        String trimmed = value.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            return trimmed.substring(1, trimmed.length() - 1);
+        }
+        return trimmed;
     }
 
     /** Review Recommendation tasks run inside a parallel multi-instance body, so the batch's shared

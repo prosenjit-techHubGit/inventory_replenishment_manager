@@ -1,5 +1,7 @@
 package com.example.procurement.application.dto;
 
+import com.example.procurement.domain.RiskLevel;
+import com.example.procurement.domain.Urgency;
 import com.example.procurement.domain.purchaseorder.InitiationType;
 import com.example.procurement.domain.purchaseorder.PurchaseOrderStatus;
 import java.math.BigDecimal;
@@ -14,10 +16,16 @@ public record PurchaseOrderResponse(
         PurchaseOrderStatus status,
         InitiationType initiationType,
         String processInstanceKey,
+        String poRequestId,
         UUID itemId,
         UUID supplierId,
+        UUID recommendationId,
         BigDecimal quantity,
         BigDecimal unitPrice,
         BigDecimal totalValue,
-        LocalDate requiredDeliveryDate) {
+        LocalDate requiredDeliveryDate,
+        Urgency urgency,
+        RiskLevel supplierRisk,
+        String businessJustification,
+        String createdAt) {
 }

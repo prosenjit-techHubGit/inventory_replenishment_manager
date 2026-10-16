@@ -2,6 +2,7 @@ package com.example.procurement.controller;
 
 import com.example.procurement.application.PurchaseOrderApplicationService;
 import com.example.procurement.application.dto.CreatePurchaseOrderRequest;
+import com.example.procurement.application.dto.PurchaseOrderDetailResponse;
 import com.example.procurement.application.dto.PurchaseOrderResponse;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -42,7 +43,7 @@ public class PurchaseOrderController {
     }
 
     @GetMapping("/{id}")
-    public PurchaseOrderResponse getById(@PathVariable UUID id) {
+    public PurchaseOrderDetailResponse getById(@PathVariable UUID id) {
         return purchaseOrderApplicationService.getById(id);
     }
 }

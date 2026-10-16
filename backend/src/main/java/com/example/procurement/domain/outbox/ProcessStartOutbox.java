@@ -8,6 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** One durable process-start message, published at-least-once with a stable message id (plan section 46). */
 @Entity
@@ -29,6 +31,7 @@ public class ProcessStartOutbox {
     @Column(name = "correlation_key", nullable = false)
     private String correlationKey;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_json", nullable = false, columnDefinition = "jsonb")
     private String payloadJson;
 

@@ -1,9 +1,14 @@
 package com.example.procurement.application;
 
+import com.example.procurement.application.dto.ApprovalDto;
 import com.example.procurement.application.dto.CreatePurchaseOrderRequest;
+import com.example.procurement.application.dto.GoodsReceiptDto;
+import com.example.procurement.application.dto.PurchaseOrderDetailResponse;
 import com.example.procurement.application.dto.PurchaseOrderResponse;
+import com.example.procurement.application.dto.ShipmentDto;
 import com.example.procurement.camunda.mapper.ProcessVariableMapper;
 import com.example.procurement.domain.RiskLevel;
+import com.example.procurement.domain.Urgency;
 import com.example.procurement.domain.idempotency.IdempotencyRequest;
 import com.example.procurement.domain.idempotency.IdempotencyStatus;
 import com.example.procurement.domain.inventory.InventoryItem;
@@ -19,13 +24,13 @@ import com.example.procurement.domain.supplier.Supplier;
 import com.example.procurement.exception.BusinessValidationException;
 import com.example.procurement.exception.IdempotencyConflictException;
 import com.example.procurement.exception.NotFoundException;
+import com.example.procurement.repository.GoodsReceiptRepository;
 import com.example.procurement.repository.IdempotencyRequestRepository;
 import com.example.procurement.repository.InventoryItemRepository;
 import com.example.procurement.repository.PurchaseOrderApprovalRepository;
 import com.example.procurement.repository.PurchaseOrderRepository;
 import com.example.procurement.repository.ShipmentRepository;
 import com.example.procurement.repository.SupplierRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +42,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Owns the Purchase Order lifecycle: idempotent manual creation and the status
@@ -51,10 +58,11 @@ public class PurchaseOrderApplicationService {
     private final InventoryItemRepository inventoryItemRepository;
     private final SupplierRepository supplierRepository;
     private final ShipmentRepository shipmentRepository;
+    private final GoodsReceiptRepository goodsReceiptRepository;
     private final ProcessStartOutboxService processStartOutboxService;
     private final ProcessVariableMapper processVariableMapper;
-    // Spring Boot 4 autoconfigures a Jackson 3 JsonMapper, not this classic ObjectMapper; construct our own.
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Jackson 3 JsonMapper includes Java Time; the classic Jackson 2 ObjectMapper cannot serialize LocalDate.
+    private final JsonMapper jsonMapper = new JsonMapper();
 
     public PurchaseOrderApplicationService(
             PurchaseOrderRepository purchaseOrderRepository,
@@ -63,6 +71,7 @@ public class PurchaseOrderApplicationService {
             InventoryItemRepository inventoryItemRepository,
             SupplierRepository supplierRepository,
             ShipmentRepository shipmentRepository,
+            GoodsReceiptRepository goodsReceiptRepository,
             ProcessStartOutboxService processStartOutboxService,
             ProcessVariableMapper processVariableMapper) {
         this.purchaseOrderRepository = purchaseOrderRepository;
@@ -71,6 +80,7 @@ public class PurchaseOrderApplicationService {
         this.inventoryItemRepository = inventoryItemRepository;
         this.supplierRepository = supplierRepository;
         this.shipmentRepository = shipmentRepository;
+        this.goodsReceiptRepository = goodsReceiptRepository;
         this.processStartOutboxService = processStartOutboxService;
         this.processVariableMapper = processVariableMapper;
     }
@@ -247,6 +257,9 @@ public class PurchaseOrderApplicationService {
         if (edits.containsKey("businessJustification")) {
             po.setBusinessJustification(edits.get("businessJustification").toString());
         }
+        if (edits.containsKey("urgency")) {
+            po.setUrgency(Urgency.valueOf(edits.get("urgency").toString()));
+        }
         po.setTotalValue(po.getQuantity().multiply(po.getUnitPrice()));
         po.setUpdatedAt(OffsetDateTime.now());
         purchaseOrderRepository.save(po);
@@ -340,8 +353,53 @@ public class PurchaseOrderApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public PurchaseOrderResponse getById(UUID purchaseOrderId) {
-        return toResponse(getOrThrow(purchaseOrderId));
+    public PurchaseOrderDetailResponse getById(UUID purchaseOrderId) {
+        PurchaseOrder po = getOrThrow(purchaseOrderId);
+        InventoryItem item = inventoryItemRepository.findById(po.getItemId()).orElse(null);
+        Supplier supplier = supplierRepository.findById(po.getSupplierId()).orElse(null);
+        var receipts = goodsReceiptRepository.findByPurchaseOrderIdOrderByReceiptNumber(po.getId());
+        BigDecimal cumulativeAccepted = receipts.stream()
+                .map(receipt -> receipt.getAcceptedQuantity() == null ? BigDecimal.ZERO : receipt.getAcceptedQuantity())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal remaining = po.getQuantity().subtract(cumulativeAccepted).max(BigDecimal.ZERO);
+        return new PurchaseOrderDetailResponse(
+                toResponse(po),
+                item != null ? item.getSku() : null,
+                item != null ? item.getName() : null,
+                item != null && item.isCriticalItem(),
+                supplier != null ? supplier.getCode() : null,
+                supplier != null ? supplier.getName() : null,
+                shipmentRepository.findByPurchaseOrderId(po.getId()).stream()
+                        .map(s -> new ShipmentDto(
+                                s.getId(),
+                                s.getStatus(),
+                                s.getPlannedDeliveryDate(),
+                                s.getActualDeliveryDate(),
+                                s.getSupplierShipmentReference(),
+                                s.getTrackingReference()))
+                        .toList(),
+                receipts.stream()
+                        .map(r -> new GoodsReceiptDto(
+                                r.getId(),
+                                r.getReceiptNumber(),
+                                r.getReceivedQuantity(),
+                                r.getAcceptedQuantity(),
+                                r.getRejectedQuantity(),
+                                r.getReceiptDate(),
+                                r.getNotes()))
+                        .toList(),
+                approvalRepository.findByPurchaseOrderIdOrderByPoRevisionAscCreatedAtAsc(po.getId()).stream()
+                        .map(a -> new ApprovalDto(
+                                a.getId(),
+                                a.getPoRevision(),
+                                a.getApprovalRole(),
+                                a.getOutcome(),
+                                a.getApproverUserId(),
+                                a.getComment(),
+                                a.getCompletedAt() == null ? null : a.getCompletedAt().toString()))
+                        .toList(),
+                cumulativeAccepted,
+                remaining);
     }
 
     @Transactional(readOnly = true)
@@ -364,26 +422,26 @@ public class PurchaseOrderApplicationService {
 
     private String hash(CreatePurchaseOrderRequest request) {
         try {
-            String canonical = objectMapper.writeValueAsString(request);
+            String canonical = jsonMapper.writeValueAsString(request);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException | com.fasterxml.jackson.core.JsonProcessingException ex) {
+        } catch (NoSuchAlgorithmException | JacksonException ex) {
             throw new BusinessValidationException("Unable to hash request body");
         }
     }
 
     private String writeResponse(PurchaseOrderResponse response) {
         try {
-            return objectMapper.writeValueAsString(response);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return jsonMapper.writeValueAsString(response);
+        } catch (JacksonException ex) {
             throw new BusinessValidationException("Unable to serialize response");
         }
     }
 
     private PurchaseOrderResponse readResponse(String json) {
         try {
-            return objectMapper.readValue(json, PurchaseOrderResponse.class);
+            return jsonMapper.readValue(json, PurchaseOrderResponse.class);
         } catch (Exception ex) {
             throw new BusinessValidationException("Unable to deserialize stored idempotent response");
         }
@@ -397,11 +455,17 @@ public class PurchaseOrderApplicationService {
                 po.getStatus(),
                 po.getInitiationType(),
                 po.getCamundaProcessInstanceKey(),
+                po.getPoRequestId(),
                 po.getItemId(),
                 po.getSupplierId(),
+                po.getRecommendationId(),
                 po.getQuantity(),
                 po.getUnitPrice(),
                 po.getTotalValue(),
-                po.getRequiredDeliveryDate());
+                po.getRequiredDeliveryDate(),
+                po.getUrgency(),
+                po.getSupplierRisk(),
+                po.getBusinessJustification(),
+                po.getCreatedAt() == null ? null : po.getCreatedAt().toString());
     }
 }
