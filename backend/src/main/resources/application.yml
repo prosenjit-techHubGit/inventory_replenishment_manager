@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: procurement
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/procurement}
+    username: ${DB_USERNAME:procurement}
+    password: ${DB_PASSWORD:procurement}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    locations: classpath:db/migration
+
+camunda:
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID:}
+      client-secret: ${CAMUNDA_CLIENT_SECRET:}
+    cloud:
+      cluster-id: ${CAMUNDA_CLUSTER_ID:}
+      region: ${CAMUNDA_REGION:}
+  # TTL for the CREATE_PURCHASE_ORDER message start event correlation window (plan section 44.2).
+  message:
+    create-po-ttl: ${CREATE_PO_MESSAGE_TTL:PT1H}
+
+# Single global batch trigger for the Replenishment Recommendation process (plan section 39.1).
+# Standard cron(6): sec min hour day-of-month month day-of-week. Default: top of every hour.
+replenishment:
+  schedule: ${REPLENISHMENT_SCHEDULE:0 0 * * * *}
+
+# Poll interval for the process_start_outbox publisher (plan section 46.2).
+outbox:
+  publish-interval-ms: ${OUTBOX_PUBLISH_INTERVAL_MS:5000}
+
+server:
+  servlet:
+    context-path: /
+
+app:
+  api:
+    prefix: /api/v1
+  cors:
+    allowed-origins: ${FRONTEND_ORIGIN:http://localhost:5173}

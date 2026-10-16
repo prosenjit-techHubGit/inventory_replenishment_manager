@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_ReplenishmentRecommendation" targetNamespace="http://example.com/procurement" exporter="inventory-replenishment-manager coding agent" exporterVersion="1.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.10.0">
+  <bpmn:process id="replenishment-recommendation" name="Replenishment Recommendation" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_BatchTriggered" name="Replenishment Run Triggered">
+      <bpmn:outgoing>Flow_ToListCandidates</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="ServiceTask_ListCandidates" name="List Replenishment Candidates">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="list-replenishment-candidates" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToListCandidates</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToProcessCandidates</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:subProcess id="SubProcess_ProcessCandidate" name="Process Candidate Item">
+      <bpmn:incoming>Flow_ToProcessCandidates</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToBatchComplete</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics>
+        <bpmn:extensionElements>
+          <zeebe:loopCharacteristics inputCollection="=candidateItemIds" inputElement="itemId" />
+        </bpmn:extensionElements>
+      </bpmn:multiInstanceLoopCharacteristics>
+      <bpmn:startEvent id="StartEvent_Candidate" name="Candidate Item">
+        <bpmn:outgoing>Flow_ToCheckReplenishment</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="ServiceTask_CheckReplenishment" name="Check Replenishment Requirement">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="check-replenishment" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_ToCheckReplenishment</bpmn:incoming>
+        <bpmn:outgoing>Flow_ToReplenishmentRequired</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="Gateway_ReplenishmentRequired" name="Replenishment Required?" default="Flow_NotRequired">
+        <bpmn:incoming>Flow_ToReplenishmentRequired</bpmn:incoming>
+        <bpmn:outgoing>Flow_NotRequired</bpmn:outgoing>
+        <bpmn:outgoing>Flow_Required</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:endEvent id="EndEvent_NotRequired" name="No Replenishment Needed">
+        <bpmn:incoming>Flow_NotRequired</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="ServiceTask_CreateRecommendation" name="Create Recommendation (AI)">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="create-recommendation" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_Required</bpmn:incoming>
+        <bpmn:outgoing>Flow_ToReviewRecommendation</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:userTask id="UserTask_ReviewRecommendation" name="Review Recommendation">
+        <bpmn:extensionElements>
+          <zeebe:userTask />
+          <zeebe:assignmentDefinition candidateGroups="INVENTORY_PLANNER" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_ToReviewRecommendation</bpmn:incoming>
+        <bpmn:outgoing>Flow_ToRecommendationOutcome</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:exclusiveGateway id="Gateway_RecommendationOutcome" name="Recommendation Accepted?" default="Flow_RecommendationRejected">
+        <bpmn:incoming>Flow_ToRecommendationOutcome</bpmn:incoming>
+        <bpmn:outgoing>Flow_RecommendationRejected</bpmn:outgoing>
+        <bpmn:outgoing>Flow_RecommendationAccepted</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:endEvent id="EndEvent_RecommendationRejected" name="Recommendation Rejected">
+        <bpmn:incoming>Flow_RecommendationRejected</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="ServiceTask_PrepareHandoff" name="Prepare PO Handoff">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="prepare-po-handoff" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_RecommendationAccepted</bpmn:incoming>
+        <bpmn:outgoing>Flow_ToHandoffComplete</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="EndEvent_HandoffPrepared" name="PO Handoff Prepared">
+        <bpmn:incoming>Flow_ToHandoffComplete</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_ToCheckReplenishment" sourceRef="StartEvent_Candidate" targetRef="ServiceTask_CheckReplenishment" />
+      <bpmn:sequenceFlow id="Flow_ToReplenishmentRequired" sourceRef="ServiceTask_CheckReplenishment" targetRef="Gateway_ReplenishmentRequired" />
+      <bpmn:sequenceFlow id="Flow_NotRequired" sourceRef="Gateway_ReplenishmentRequired" targetRef="EndEvent_NotRequired" />
+      <bpmn:sequenceFlow id="Flow_Required" sourceRef="Gateway_ReplenishmentRequired" targetRef="ServiceTask_CreateRecommendation">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=replenishmentRequired = true</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_ToReviewRecommendation" sourceRef="ServiceTask_CreateRecommendation" targetRef="UserTask_ReviewRecommendation" />
+      <bpmn:sequenceFlow id="Flow_ToRecommendationOutcome" sourceRef="UserTask_ReviewRecommendation" targetRef="Gateway_RecommendationOutcome" />
+      <bpmn:sequenceFlow id="Flow_RecommendationRejected" sourceRef="Gateway_RecommendationOutcome" targetRef="EndEvent_RecommendationRejected" />
+      <bpmn:sequenceFlow id="Flow_RecommendationAccepted" sourceRef="Gateway_RecommendationOutcome" targetRef="ServiceTask_PrepareHandoff">
+        <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=recommendationOutcome = "ACCEPTED"</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="Flow_ToHandoffComplete" sourceRef="ServiceTask_PrepareHandoff" targetRef="EndEvent_HandoffPrepared" />
+    </bpmn:subProcess>
+    <bpmn:endEvent id="EndEvent_BatchComplete" name="Replenishment Run Complete">
+      <bpmn:incoming>Flow_ToBatchComplete</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_ToListCandidates" sourceRef="StartEvent_BatchTriggered" targetRef="ServiceTask_ListCandidates" />
+    <bpmn:sequenceFlow id="Flow_ToProcessCandidates" sourceRef="ServiceTask_ListCandidates" targetRef="SubProcess_ProcessCandidate" />
+    <bpmn:sequenceFlow id="Flow_ToBatchComplete" sourceRef="SubProcess_ProcessCandidate" targetRef="EndEvent_BatchComplete" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_replenishment-recommendation">
+    <bpmndi:BPMNPlane id="BPMNPlane_replenishment-recommendation" bpmnElement="replenishment-recommendation">
+      <bpmndi:BPMNShape id="StartEvent_BatchTriggered_di" bpmnElement="StartEvent_BatchTriggered">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ListCandidates_di" bpmnElement="ServiceTask_ListCandidates">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SubProcess_ProcessCandidate_di" bpmnElement="SubProcess_ProcessCandidate">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_BatchComplete_di" bpmnElement="EndEvent_BatchComplete">
+        <dc:Bounds x="507" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToListCandidates_di" bpmnElement="Flow_ToListCandidates">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToProcessCandidates_di" bpmnElement="Flow_ToProcessCandidates">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToBatchComplete_di" bpmnElement="Flow_ToBatchComplete">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="507" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="StartEvent_Candidate_di" bpmnElement="StartEvent_Candidate">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CheckReplenishment_di" bpmnElement="ServiceTask_CheckReplenishment">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ReplenishmentRequired_di" bpmnElement="Gateway_ReplenishmentRequired" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_NotRequired_di" bpmnElement="EndEvent_NotRequired">
+        <dc:Bounds x="507" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CreateRecommendation_di" bpmnElement="ServiceTask_CreateRecommendation">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ReviewRecommendation_di" bpmnElement="UserTask_ReviewRecommendation">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_RecommendationOutcome_di" bpmnElement="Gateway_RecommendationOutcome" isMarkerVisible="true">
+        <dc:Bounds x="800" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_RecommendationRejected_di" bpmnElement="EndEvent_RecommendationRejected">
+        <dc:Bounds x="957" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_PrepareHandoff_di" bpmnElement="ServiceTask_PrepareHandoff">
+        <dc:Bounds x="925" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_HandoffPrepared_di" bpmnElement="EndEvent_HandoffPrepared">
+        <dc:Bounds x="1107" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToCheckReplenishment_di" bpmnElement="Flow_ToCheckReplenishment">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToReplenishmentRequired_di" bpmnElement="Flow_ToReplenishmentRequired">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotRequired_di" bpmnElement="Flow_NotRequired">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="507" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Required_di" bpmnElement="Flow_Required">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToReviewRecommendation_di" bpmnElement="Flow_ToReviewRecommendation">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToRecommendationOutcome_di" bpmnElement="Flow_ToRecommendationOutcome">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="800" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RecommendationRejected_di" bpmnElement="Flow_RecommendationRejected">
+        <di:waypoint x="850" y="210" />
+        <di:waypoint x="957" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RecommendationAccepted_di" bpmnElement="Flow_RecommendationAccepted">
+        <di:waypoint x="825" y="235" />
+        <di:waypoint x="825" y="350" />
+        <di:waypoint x="925" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToHandoffComplete_di" bpmnElement="Flow_ToHandoffComplete">
+        <di:waypoint x="1025" y="350" />
+        <di:waypoint x="1107" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

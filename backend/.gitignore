@@ -1,0 +1,8 @@
+target/
+*.class
+.mvn/
+!.mvn/wrapper/maven-wrapper.properties
+HELP.md
+
+# Local secrets (Camunda SaaS credentials, DB password overrides, etc.) - never commit.
+application-local.yml

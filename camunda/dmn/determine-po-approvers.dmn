@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             id="Definitions_DetermineApprovalRoute"
+             name="Determine Approval Route"
+             namespace="http://example.com/procurement"
+             exporter="inventory-replenishment-manager coding agent"
+             exporterVersion="1.0">
+
+  <decision id="determine-po-approvers" name="Determine Approval Route">
+    <decisionTable id="DecisionTable_DetermineApprovers" hitPolicy="FIRST">
+      <input id="Input_PoValue" label="PO Value">
+        <inputExpression id="InputExpression_PoValue" typeRef="number">
+          <text>poValue</text>
+        </inputExpression>
+      </input>
+      <input id="Input_Urgency" label="Urgency">
+        <inputExpression id="InputExpression_Urgency" typeRef="string">
+          <text>urgency</text>
+        </inputExpression>
+      </input>
+      <input id="Input_SupplierRisk" label="Supplier Risk">
+        <inputExpression id="InputExpression_SupplierRisk" typeRef="string">
+          <text>supplierRisk</text>
+        </inputExpression>
+      </input>
+      <input id="Input_CriticalItem" label="Critical Item">
+        <inputExpression id="InputExpression_CriticalItem" typeRef="boolean">
+          <text>criticalItem</text>
+        </inputExpression>
+      </input>
+      <output id="Output_ProcurementApprovalRequired" label="Procurement Approval Required"
+              name="procurementApprovalRequired" typeRef="boolean" />
+      <output id="Output_FinanceApprovalRequired" label="Finance Approval Required"
+              name="financeApprovalRequired" typeRef="boolean" />
+      <output id="Output_SupplyChainApprovalRequired" label="Supply Chain Approval Required"
+              name="supplyChainApprovalRequired" typeRef="boolean" />
+
+      <rule id="Rule_Default">
+        <inputEntry id="InputEntry_PoValue">
+          <text>-</text>
+        </inputEntry>
+        <inputEntry id="InputEntry_Urgency">
+          <text>-</text>
+        </inputEntry>
+        <inputEntry id="InputEntry_SupplierRisk">
+          <text>-</text>
+        </inputEntry>
+        <inputEntry id="InputEntry_CriticalItem">
+          <text>-</text>
+        </inputEntry>
+        <outputEntry id="OutputEntry_ProcurementApprovalRequired">
+          <text>true</text>
+        </outputEntry>
+        <outputEntry id="OutputEntry_FinanceApprovalRequired">
+          <text>poValue &gt; 5000</text>
+        </outputEntry>
+        <outputEntry id="OutputEntry_SupplyChainApprovalRequired">
+          <text>urgency = "URGENT" or criticalItem = true or supplierRisk = "HIGH"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

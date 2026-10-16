@@ -1,0 +1,576 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_CreatePurchaseOrder" targetNamespace="http://example.com/procurement" exporter="Camunda Modeler" exporterVersion="5.49.0" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.10.0">
+  <bpmn:process id="create-purchase-order" name="Create Purchase Order" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Created" name="Create PO Requested">
+      <bpmn:outgoing>Flow_ToRegisterProcessStart</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_CreatePO" messageRef="Message_CreatePurchaseOrder" />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="ServiceTask_RegisterProcessStart" name="Register Process Start">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="register-process-start" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToRegisterProcessStart</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDuplicateCheck</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_DuplicateProcessStart" name="Duplicate Process Start?" default="Flow_NotDuplicate">
+      <bpmn:incoming>Flow_ToDuplicateCheck</bpmn:incoming>
+      <bpmn:outgoing>Flow_Duplicate</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NotDuplicate</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="EndEvent_DuplicateStart" name="Duplicate Start Discarded">
+      <bpmn:incoming>Flow_Duplicate</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ServiceTask_PreparePo" name="Prepare PO">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="prepare-po" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_NotDuplicate</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSubmitForApproval</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ServiceTask_SubmitForApproval" name="Submit for Approval">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="submit-po-for-approval" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToSubmitForApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDetermineApprovalRoute</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:businessRuleTask id="BusinessRuleTask_DetermineApprovalRoute" name="Determine Approval Route">
+      <bpmn:extensionElements>
+        <zeebe:calledDecision decisionId="determine-po-approvers" resultVariable="approvalRouting" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToDetermineApprovalRoute</bpmn:incoming>
+      <bpmn:incoming>Flow_RevisionLoopBack</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToProcurementApproval</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:userTask id="UserTask_ProcurementApproval" name="Procurement Manager Approval">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="PROCUREMENT_MANAGER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToProcurementApproval</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToProcurementOutcome</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_ProcurementOutcome" name="Procurement Outcome" default="Flow_ProcurementApproved">
+      <bpmn:incoming>Flow_ToProcurementOutcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_ProcurementRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ProcurementRevision</bpmn:outgoing>
+      <bpmn:outgoing>Flow_ProcurementApproved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_FinanceRequired" name="Finance Required?" default="Flow_FinanceNotRequired">
+      <bpmn:incoming>Flow_ProcurementApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_FinanceRequired</bpmn:outgoing>
+      <bpmn:outgoing>Flow_FinanceNotRequired</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="UserTask_FinanceApproval" name="Finance Approval">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="FINANCE_APPROVER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_FinanceRequired</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToFinanceOutcome</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_FinanceOutcome" name="Finance Outcome" default="Flow_FinanceApproved">
+      <bpmn:incoming>Flow_ToFinanceOutcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_FinanceRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_FinanceRevision</bpmn:outgoing>
+      <bpmn:outgoing>Flow_FinanceApproved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_SupplyChainRequired" name="Supply Chain Required?" default="Flow_SupplyChainNotRequired">
+      <bpmn:incoming>Flow_FinanceNotRequired</bpmn:incoming>
+      <bpmn:incoming>Flow_FinanceApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_SupplyChainRequired</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SupplyChainNotRequired</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="UserTask_SupplyChainApproval" name="Supply Chain Manager Approval">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="SUPPLY_CHAIN_MANAGER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SupplyChainRequired</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSupplyChainOutcome</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_SupplyChainOutcome" name="Supply Chain Outcome" default="Flow_SupplyChainApproved">
+      <bpmn:incoming>Flow_ToSupplyChainOutcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_SupplyChainRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SupplyChainRevision</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SupplyChainApproved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ServiceTask_MarkApproved" name="Mark PO Approved">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mark-po-approved" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SupplyChainNotRequired</bpmn:incoming>
+      <bpmn:incoming>Flow_SupplyChainApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSupplierConfirmation</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="UserTask_RevisePO" name="Revise Purchase Order">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="PROCUREMENT_BUYER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ProcurementRevision</bpmn:incoming>
+      <bpmn:incoming>Flow_FinanceRevision</bpmn:incoming>
+      <bpmn:incoming>Flow_SupplyChainRevision</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToApplyRevision</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="ServiceTask_ApplyRevision" name="Apply Revision">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="apply-po-revision" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToApplyRevision</bpmn:incoming>
+      <bpmn:outgoing>Flow_RevisionLoopBack</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="ServiceTask_RejectPO" name="Reject PO">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="reject-po" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ProcurementRejected</bpmn:incoming>
+      <bpmn:incoming>Flow_FinanceRejected</bpmn:incoming>
+      <bpmn:incoming>Flow_SupplyChainRejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEndRejected</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_Rejected" name="PO Rejected">
+      <bpmn:incoming>Flow_ToEndRejected</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="UserTask_SupplierConfirmation" name="Supplier Confirmation">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="SUPPLIER_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToSupplierConfirmation</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSupplierOutcome</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_SupplierOutcome" name="Supplier Outcome" default="Flow_SupplierConfirmed">
+      <bpmn:incoming>Flow_ToSupplierOutcome</bpmn:incoming>
+      <bpmn:outgoing>Flow_SupplierRejected</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SupplierRevisedDate</bpmn:outgoing>
+      <bpmn:outgoing>Flow_SupplierConfirmed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ServiceTask_MarkSupplierRejected" name="Mark Supplier Rejected">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="mark-supplier-rejected" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SupplierRejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEndSupplierRejected</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_SupplierRejected" name="Supplier Rejected">
+      <bpmn:incoming>Flow_ToEndSupplierRejected</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="ServiceTask_ReleasePO" name="Release to Supplier">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="release-purchase-order" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_SupplierRevisedDate</bpmn:incoming>
+      <bpmn:incoming>Flow_SupplierConfirmed</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToTrackShipment</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="UserTask_TrackShipment" name="Track Shipment">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="WAREHOUSE_RECEIVER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToTrackShipment</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToGoodsReceipt</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:boundaryEvent id="TimerBoundary_ShipmentOverdue" name="Shipment Overdue" cancelActivity="false" attachedToRef="UserTask_TrackShipment">
+      <bpmn:outgoing>Flow_ToFlagDelayed</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_ShipmentOverdue">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">P3D</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="ServiceTask_FlagShipmentDelayed" name="Flag Shipment Delayed">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="flag-shipment-delayed" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToFlagDelayed</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEndShipmentFlagged</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_ShipmentFlagged" name="Shipment Flagged">
+      <bpmn:incoming>Flow_ToEndShipmentFlagged</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="UserTask_GoodsReceipt" name="Goods Receipt">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:assignmentDefinition candidateGroups="WAREHOUSE_RECEIVER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToGoodsReceipt</bpmn:incoming>
+      <bpmn:incoming>Flow_NotFullyReceived</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToUpdateInventory</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="ServiceTask_UpdateInventory" name="Update Inventory">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="update-inventory" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToUpdateInventory</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToFullyReceived</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_FullyReceived" name="Fully Received?" default="Flow_NotFullyReceived">
+      <bpmn:incoming>Flow_ToFullyReceived</bpmn:incoming>
+      <bpmn:outgoing>Flow_NotFullyReceived</bpmn:outgoing>
+      <bpmn:outgoing>Flow_FullyReceived</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ServiceTask_CompletePO" name="Complete PO">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="complete-po" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_FullyReceived</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToEndCompleted</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndEvent_Completed" name="PO Completed">
+      <bpmn:incoming>Flow_ToEndCompleted</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_ToRegisterProcessStart" sourceRef="StartEvent_Created" targetRef="ServiceTask_RegisterProcessStart" />
+    <bpmn:sequenceFlow id="Flow_ToDuplicateCheck" sourceRef="ServiceTask_RegisterProcessStart" targetRef="Gateway_DuplicateProcessStart" />
+    <bpmn:sequenceFlow id="Flow_Duplicate" sourceRef="Gateway_DuplicateProcessStart" targetRef="EndEvent_DuplicateStart">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=duplicateProcessStart = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_NotDuplicate" sourceRef="Gateway_DuplicateProcessStart" targetRef="ServiceTask_PreparePo" />
+    <bpmn:sequenceFlow id="Flow_ToSubmitForApproval" sourceRef="ServiceTask_PreparePo" targetRef="ServiceTask_SubmitForApproval" />
+    <bpmn:sequenceFlow id="Flow_ToDetermineApprovalRoute" sourceRef="ServiceTask_SubmitForApproval" targetRef="BusinessRuleTask_DetermineApprovalRoute" />
+    <bpmn:sequenceFlow id="Flow_ToProcurementApproval" sourceRef="BusinessRuleTask_DetermineApprovalRoute" targetRef="UserTask_ProcurementApproval" />
+    <bpmn:sequenceFlow id="Flow_ToProcurementOutcome" sourceRef="UserTask_ProcurementApproval" targetRef="Gateway_ProcurementOutcome" />
+    <bpmn:sequenceFlow id="Flow_ProcurementRejected" sourceRef="Gateway_ProcurementOutcome" targetRef="ServiceTask_RejectPO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "REJECTED"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ProcurementRevision" sourceRef="Gateway_ProcurementOutcome" targetRef="UserTask_RevisePO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "RETURNED_FOR_REVISION"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ProcurementApproved" sourceRef="Gateway_ProcurementOutcome" targetRef="Gateway_FinanceRequired" />
+    <bpmn:sequenceFlow id="Flow_FinanceRequired" sourceRef="Gateway_FinanceRequired" targetRef="UserTask_FinanceApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalRouting.financeApprovalRequired = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_FinanceNotRequired" sourceRef="Gateway_FinanceRequired" targetRef="Gateway_SupplyChainRequired" />
+    <bpmn:sequenceFlow id="Flow_ToFinanceOutcome" sourceRef="UserTask_FinanceApproval" targetRef="Gateway_FinanceOutcome" />
+    <bpmn:sequenceFlow id="Flow_FinanceRejected" sourceRef="Gateway_FinanceOutcome" targetRef="ServiceTask_RejectPO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "REJECTED"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_FinanceRevision" sourceRef="Gateway_FinanceOutcome" targetRef="UserTask_RevisePO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "RETURNED_FOR_REVISION"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_FinanceApproved" sourceRef="Gateway_FinanceOutcome" targetRef="Gateway_SupplyChainRequired" />
+    <bpmn:sequenceFlow id="Flow_SupplyChainRequired" sourceRef="Gateway_SupplyChainRequired" targetRef="UserTask_SupplyChainApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalRouting.supplyChainApprovalRequired = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SupplyChainNotRequired" sourceRef="Gateway_SupplyChainRequired" targetRef="ServiceTask_MarkApproved" />
+    <bpmn:sequenceFlow id="Flow_ToSupplyChainOutcome" sourceRef="UserTask_SupplyChainApproval" targetRef="Gateway_SupplyChainOutcome" />
+    <bpmn:sequenceFlow id="Flow_SupplyChainRejected" sourceRef="Gateway_SupplyChainOutcome" targetRef="ServiceTask_RejectPO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "REJECTED"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SupplyChainRevision" sourceRef="Gateway_SupplyChainOutcome" targetRef="UserTask_RevisePO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=approvalOutcome = "RETURNED_FOR_REVISION"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SupplyChainApproved" sourceRef="Gateway_SupplyChainOutcome" targetRef="ServiceTask_MarkApproved" />
+    <bpmn:sequenceFlow id="Flow_ToSupplierConfirmation" sourceRef="ServiceTask_MarkApproved" targetRef="UserTask_SupplierConfirmation" />
+    <bpmn:sequenceFlow id="Flow_ToApplyRevision" sourceRef="UserTask_RevisePO" targetRef="ServiceTask_ApplyRevision" />
+    <bpmn:sequenceFlow id="Flow_RevisionLoopBack" sourceRef="ServiceTask_ApplyRevision" targetRef="BusinessRuleTask_DetermineApprovalRoute" />
+    <bpmn:sequenceFlow id="Flow_ToEndRejected" sourceRef="ServiceTask_RejectPO" targetRef="EndEvent_Rejected" />
+    <bpmn:sequenceFlow id="Flow_ToSupplierOutcome" sourceRef="UserTask_SupplierConfirmation" targetRef="Gateway_SupplierOutcome" />
+    <bpmn:sequenceFlow id="Flow_SupplierRejected" sourceRef="Gateway_SupplierOutcome" targetRef="ServiceTask_MarkSupplierRejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=confirmationStatus = "REJECTED"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SupplierRevisedDate" sourceRef="Gateway_SupplierOutcome" targetRef="ServiceTask_ReleasePO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=confirmationStatus = "REVISED_DATE"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_SupplierConfirmed" sourceRef="Gateway_SupplierOutcome" targetRef="ServiceTask_ReleasePO" />
+    <bpmn:sequenceFlow id="Flow_ToEndSupplierRejected" sourceRef="ServiceTask_MarkSupplierRejected" targetRef="EndEvent_SupplierRejected" />
+    <bpmn:sequenceFlow id="Flow_ToTrackShipment" sourceRef="ServiceTask_ReleasePO" targetRef="UserTask_TrackShipment" />
+    <bpmn:sequenceFlow id="Flow_ToFlagDelayed" sourceRef="TimerBoundary_ShipmentOverdue" targetRef="ServiceTask_FlagShipmentDelayed" />
+    <bpmn:sequenceFlow id="Flow_ToEndShipmentFlagged" sourceRef="ServiceTask_FlagShipmentDelayed" targetRef="EndEvent_ShipmentFlagged" />
+    <bpmn:sequenceFlow id="Flow_ToGoodsReceipt" sourceRef="UserTask_TrackShipment" targetRef="UserTask_GoodsReceipt" />
+    <bpmn:sequenceFlow id="Flow_ToUpdateInventory" sourceRef="UserTask_GoodsReceipt" targetRef="ServiceTask_UpdateInventory" />
+    <bpmn:sequenceFlow id="Flow_ToFullyReceived" sourceRef="ServiceTask_UpdateInventory" targetRef="Gateway_FullyReceived" />
+    <bpmn:sequenceFlow id="Flow_NotFullyReceived" sourceRef="Gateway_FullyReceived" targetRef="UserTask_GoodsReceipt" />
+    <bpmn:sequenceFlow id="Flow_FullyReceived" sourceRef="Gateway_FullyReceived" targetRef="ServiceTask_CompletePO">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=fullyReceived = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ToEndCompleted" sourceRef="ServiceTask_CompletePO" targetRef="EndEvent_Completed" />
+  </bpmn:process>
+  <bpmn:message id="Message_CreatePurchaseOrder" name="CREATE_PURCHASE_ORDER" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_create-purchase-order">
+    <bpmndi:BPMNPlane id="BPMNPlane_create-purchase-order" bpmnElement="create-purchase-order">
+      <bpmndi:BPMNShape id="StartEvent_Created_di" bpmnElement="StartEvent_Created">
+        <dc:Bounds x="112" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_RegisterProcessStart_di" bpmnElement="ServiceTask_RegisterProcessStart">
+        <dc:Bounds x="230" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_DuplicateProcessStart_di" bpmnElement="Gateway_DuplicateProcessStart" isMarkerVisible="true">
+        <dc:Bounds x="405" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_PreparePo_di" bpmnElement="ServiceTask_PreparePo">
+        <dc:Bounds x="530" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_SubmitForApproval_di" bpmnElement="ServiceTask_SubmitForApproval">
+        <dc:Bounds x="680" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BusinessRuleTask_DetermineApprovalRoute_di" bpmnElement="BusinessRuleTask_DetermineApprovalRoute">
+        <dc:Bounds x="830" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_ProcurementApproval_di" bpmnElement="UserTask_ProcurementApproval">
+        <dc:Bounds x="980" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ProcurementOutcome_di" bpmnElement="Gateway_ProcurementOutcome" isMarkerVisible="true">
+        <dc:Bounds x="1155" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_DuplicateStart_di" bpmnElement="EndEvent_DuplicateStart">
+        <dc:Bounds x="412" y="202" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_RejectPO_di" bpmnElement="ServiceTask_RejectPO">
+        <dc:Bounds x="700" y="180" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Rejected_di" bpmnElement="EndEvent_Rejected">
+        <dc:Bounds x="850" y="202" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_RevisePO_di" bpmnElement="UserTask_RevisePO">
+        <dc:Bounds x="830" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ApplyRevision_di" bpmnElement="ServiceTask_ApplyRevision">
+        <dc:Bounds x="1010" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_FinanceRequired_di" bpmnElement="Gateway_FinanceRequired" isMarkerVisible="true">
+        <dc:Bounds x="1155" y="435" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_FinanceApproval_di" bpmnElement="UserTask_FinanceApproval">
+        <dc:Bounds x="980" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_FinanceOutcome_di" bpmnElement="Gateway_FinanceOutcome" isMarkerVisible="true">
+        <dc:Bounds x="855" y="435" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_SupplyChainRequired_di" bpmnElement="Gateway_SupplyChainRequired" isMarkerVisible="true">
+        <dc:Bounds x="705" y="435" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_SupplyChainApproval_di" bpmnElement="UserTask_SupplyChainApproval">
+        <dc:Bounds x="530" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_SupplyChainOutcome_di" bpmnElement="Gateway_SupplyChainOutcome" isMarkerVisible="true">
+        <dc:Bounds x="405" y="435" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_MarkApproved_di" bpmnElement="ServiceTask_MarkApproved">
+        <dc:Bounds x="230" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_SupplierConfirmation_di" bpmnElement="UserTask_SupplierConfirmation">
+        <dc:Bounds x="80" y="420" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_SupplierOutcome_di" bpmnElement="Gateway_SupplierOutcome" isMarkerVisible="true">
+        <dc:Bounds x="105" y="615" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_ReleasePO_di" bpmnElement="ServiceTask_ReleasePO">
+        <dc:Bounds x="230" y="600" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_TrackShipment_di" bpmnElement="UserTask_TrackShipment">
+        <dc:Bounds x="380" y="600" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="UserTask_GoodsReceipt_di" bpmnElement="UserTask_GoodsReceipt">
+        <dc:Bounds x="530" y="600" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_UpdateInventory_di" bpmnElement="ServiceTask_UpdateInventory">
+        <dc:Bounds x="680" y="600" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_FullyReceived_di" bpmnElement="Gateway_FullyReceived" isMarkerVisible="true">
+        <dc:Bounds x="855" y="615" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_CompletePO_di" bpmnElement="ServiceTask_CompletePO">
+        <dc:Bounds x="980" y="600" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Completed_di" bpmnElement="EndEvent_Completed">
+        <dc:Bounds x="1162" y="622" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TimerBoundary_ShipmentOverdue_di" bpmnElement="TimerBoundary_ShipmentOverdue">
+        <dc:Bounds x="412" y="662" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_MarkSupplierRejected_di" bpmnElement="ServiceTask_MarkSupplierRejected">
+        <dc:Bounds x="80" y="760" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_SupplierRejected_di" bpmnElement="EndEvent_SupplierRejected">
+        <dc:Bounds x="260" y="782" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ServiceTask_FlagShipmentDelayed_di" bpmnElement="ServiceTask_FlagShipmentDelayed">
+        <dc:Bounds x="380" y="760" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_ShipmentFlagged_di" bpmnElement="EndEvent_ShipmentFlagged">
+        <dc:Bounds x="560" y="782" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_ToRegisterProcessStart_di" bpmnElement="Flow_ToRegisterProcessStart">
+        <di:waypoint x="148" y="100" />
+        <di:waypoint x="230" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToDuplicateCheck_di" bpmnElement="Flow_ToDuplicateCheck">
+        <di:waypoint x="330" y="100" />
+        <di:waypoint x="405" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Duplicate_di" bpmnElement="Flow_Duplicate">
+        <di:waypoint x="430" y="125" />
+        <di:waypoint x="430" y="202" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotDuplicate_di" bpmnElement="Flow_NotDuplicate">
+        <di:waypoint x="455" y="100" />
+        <di:waypoint x="530" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSubmitForApproval_di" bpmnElement="Flow_ToSubmitForApproval">
+        <di:waypoint x="630" y="100" />
+        <di:waypoint x="680" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToDetermineApprovalRoute_di" bpmnElement="Flow_ToDetermineApprovalRoute">
+        <di:waypoint x="780" y="100" />
+        <di:waypoint x="830" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToProcurementApproval_di" bpmnElement="Flow_ToProcurementApproval">
+        <di:waypoint x="930" y="100" />
+        <di:waypoint x="980" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToProcurementOutcome_di" bpmnElement="Flow_ToProcurementOutcome">
+        <di:waypoint x="1080" y="100" />
+        <di:waypoint x="1155" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ProcurementRejected_di" bpmnElement="Flow_ProcurementRejected">
+        <di:waypoint x="1180" y="125" />
+        <di:waypoint x="1180" y="150" />
+        <di:waypoint x="750" y="150" />
+        <di:waypoint x="750" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ProcurementRevision_di" bpmnElement="Flow_ProcurementRevision">
+        <di:waypoint x="1180" y="125" />
+        <di:waypoint x="1180" y="300" />
+        <di:waypoint x="880" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ProcurementApproved_di" bpmnElement="Flow_ProcurementApproved">
+        <di:waypoint x="1180" y="125" />
+        <di:waypoint x="1180" y="435" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinanceRequired_di" bpmnElement="Flow_FinanceRequired">
+        <di:waypoint x="1155" y="460" />
+        <di:waypoint x="1080" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinanceNotRequired_di" bpmnElement="Flow_FinanceNotRequired">
+        <di:waypoint x="1180" y="485" />
+        <di:waypoint x="1180" y="540" />
+        <di:waypoint x="710" y="540" />
+        <di:waypoint x="710" y="485" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToFinanceOutcome_di" bpmnElement="Flow_ToFinanceOutcome">
+        <di:waypoint x="980" y="460" />
+        <di:waypoint x="905" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinanceRejected_di" bpmnElement="Flow_FinanceRejected">
+        <di:waypoint x="880" y="435" />
+        <di:waypoint x="880" y="280" />
+        <di:waypoint x="750" y="280" />
+        <di:waypoint x="750" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinanceRevision_di" bpmnElement="Flow_FinanceRevision">
+        <di:waypoint x="880" y="435" />
+        <di:waypoint x="880" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FinanceApproved_di" bpmnElement="Flow_FinanceApproved">
+        <di:waypoint x="855" y="460" />
+        <di:waypoint x="755" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplyChainRequired_di" bpmnElement="Flow_SupplyChainRequired">
+        <di:waypoint x="705" y="460" />
+        <di:waypoint x="630" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplyChainNotRequired_di" bpmnElement="Flow_SupplyChainNotRequired">
+        <di:waypoint x="750" y="485" />
+        <di:waypoint x="750" y="550" />
+        <di:waypoint x="280" y="550" />
+        <di:waypoint x="280" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSupplyChainOutcome_di" bpmnElement="Flow_ToSupplyChainOutcome">
+        <di:waypoint x="530" y="460" />
+        <di:waypoint x="455" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplyChainRejected_di" bpmnElement="Flow_SupplyChainRejected">
+        <di:waypoint x="430" y="435" />
+        <di:waypoint x="430" y="280" />
+        <di:waypoint x="750" y="280" />
+        <di:waypoint x="750" y="260" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplyChainRevision_di" bpmnElement="Flow_SupplyChainRevision">
+        <di:waypoint x="430" y="435" />
+        <di:waypoint x="430" y="390" />
+        <di:waypoint x="880" y="390" />
+        <di:waypoint x="880" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplyChainApproved_di" bpmnElement="Flow_SupplyChainApproved">
+        <di:waypoint x="405" y="460" />
+        <di:waypoint x="330" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSupplierConfirmation_di" bpmnElement="Flow_ToSupplierConfirmation">
+        <di:waypoint x="230" y="460" />
+        <di:waypoint x="180" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToApplyRevision_di" bpmnElement="Flow_ToApplyRevision">
+        <di:waypoint x="930" y="340" />
+        <di:waypoint x="1010" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RevisionLoopBack_di" bpmnElement="Flow_RevisionLoopBack">
+        <di:waypoint x="1060" y="300" />
+        <di:waypoint x="1060" y="160" />
+        <di:waypoint x="880" y="160" />
+        <di:waypoint x="880" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEndRejected_di" bpmnElement="Flow_ToEndRejected">
+        <di:waypoint x="800" y="220" />
+        <di:waypoint x="850" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToSupplierOutcome_di" bpmnElement="Flow_ToSupplierOutcome">
+        <di:waypoint x="130" y="500" />
+        <di:waypoint x="130" y="615" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplierRejected_di" bpmnElement="Flow_SupplierRejected">
+        <di:waypoint x="130" y="665" />
+        <di:waypoint x="130" y="760" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplierRevisedDate_di" bpmnElement="Flow_SupplierRevisedDate">
+        <di:waypoint x="155" y="630" />
+        <di:waypoint x="230" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_SupplierConfirmed_di" bpmnElement="Flow_SupplierConfirmed">
+        <di:waypoint x="155" y="650" />
+        <di:waypoint x="230" y="650" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEndSupplierRejected_di" bpmnElement="Flow_ToEndSupplierRejected">
+        <di:waypoint x="180" y="800" />
+        <di:waypoint x="260" y="800" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToTrackShipment_di" bpmnElement="Flow_ToTrackShipment">
+        <di:waypoint x="330" y="640" />
+        <di:waypoint x="380" y="640" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToFlagDelayed_di" bpmnElement="Flow_ToFlagDelayed">
+        <di:waypoint x="430" y="698" />
+        <di:waypoint x="430" y="760" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEndShipmentFlagged_di" bpmnElement="Flow_ToEndShipmentFlagged">
+        <di:waypoint x="480" y="800" />
+        <di:waypoint x="560" y="800" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToGoodsReceipt_di" bpmnElement="Flow_ToGoodsReceipt">
+        <di:waypoint x="480" y="640" />
+        <di:waypoint x="530" y="640" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToUpdateInventory_di" bpmnElement="Flow_ToUpdateInventory">
+        <di:waypoint x="630" y="640" />
+        <di:waypoint x="680" y="640" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToFullyReceived_di" bpmnElement="Flow_ToFullyReceived">
+        <di:waypoint x="780" y="640" />
+        <di:waypoint x="855" y="640" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotFullyReceived_di" bpmnElement="Flow_NotFullyReceived">
+        <di:waypoint x="880" y="665" />
+        <di:waypoint x="880" y="720" />
+        <di:waypoint x="580" y="720" />
+        <di:waypoint x="580" y="680" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FullyReceived_di" bpmnElement="Flow_FullyReceived">
+        <di:waypoint x="905" y="640" />
+        <di:waypoint x="980" y="640" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ToEndCompleted_di" bpmnElement="Flow_ToEndCompleted">
+        <di:waypoint x="1080" y="640" />
+        <di:waypoint x="1162" y="640" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
