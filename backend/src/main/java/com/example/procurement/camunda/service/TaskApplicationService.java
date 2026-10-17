@@ -76,7 +76,12 @@ public class TaskApplicationService {
 
     public TaskDetailResponse getTask(long taskKey) {
         UserTask task = fetchTask(taskKey);
-        Map<String, Object> data = loadTaskVariables(taskKey);
+        Map<String, Object> data = loadTaskVariables(task);
+        if (ProcessConstants.ELEMENT_REVIEW_RECOMMENDATION.equals(task.getElementId())) {
+            UUID recommendationId = recommendationApplicationService.resolveReviewRecommendationId(
+                    data.get("itemId"), data.get("recommendationId"));
+            data.put("recommendationId", recommendationId.toString());
+        }
         return new TaskDetailResponse(
                 String.valueOf(task.getUserTaskKey()),
                 task.getElementId(),
@@ -97,7 +102,7 @@ public class TaskApplicationService {
     public void complete(long taskKey, TaskCompletionRequest request, String actingUserId) {
         UserTask task = fetchTask(taskKey);
         Map<String, Object> variables = ProcessConstants.ELEMENT_REVIEW_RECOMMENDATION.equals(task.getElementId())
-                ? dispatchRecommendationReview(taskKey, request, actingUserId)
+                ? dispatchRecommendationReview(task, request, actingUserId)
                 : dispatchPurchaseOrderTask(task, request, actingUserId);
         try {
             camundaClient.newCompleteUserTaskCommand(taskKey)
@@ -125,7 +130,7 @@ public class TaskApplicationService {
                 return byBusinessId.get();
             }
         }
-        Map<String, Object> variables = loadTaskVariables(task.getUserTaskKey());
+        Map<String, Object> variables = loadTaskVariables(task);
         Object poRequestId = variables.get("poRequestId");
         if (poRequestId != null && !poRequestId.toString().isBlank()) {
             var byRequestId = purchaseOrderRepository.findByPoRequestId(stripJsonQuotes(poRequestId.toString()));
@@ -152,27 +157,65 @@ public class TaskApplicationService {
 
     /** Review Recommendation tasks run inside a parallel multi-instance body, so the batch's shared
      * businessId cannot identify them; the recommendation id is carried as a task-local variable instead. */
-    private Map<String, Object> dispatchRecommendationReview(long taskKey, TaskCompletionRequest request, String actingUserId) {
-        Object recommendationIdValue = loadTaskVariables(taskKey).get("recommendationId");
-        if (recommendationIdValue == null) {
-            throw new BusinessValidationException("Task " + taskKey + " is missing recommendationId");
-        }
-        UUID recommendationId = UUID.fromString(recommendationIdValue.toString());
+    private Map<String, Object> dispatchRecommendationReview(
+            UserTask task, TaskCompletionRequest request, String actingUserId) {
+        Map<String, Object> taskVariables = loadTaskVariables(task);
+        UUID recommendationId = recommendationApplicationService.resolveReviewRecommendationId(
+                taskVariables.get("itemId"), taskVariables.get("recommendationId"));
         return recommendationApplicationService.recordReviewDecision(
                 recommendationId, request.action(), request.variables(), actingUserId);
     }
 
-    private Map<String, Object> loadTaskVariables(long taskKey) {
+    private Map<String, Object> loadTaskVariables(UserTask task) {
         Map<String, Object> data = new HashMap<>();
+        Map<String, Long> scopes = new HashMap<>();
         try {
-            List<Variable> variables = camundaClient.newUserTaskVariableSearchRequest(taskKey).execute().items();
+            List<Variable> variables =
+                    camundaClient.newUserTaskVariableSearchRequest(task.getUserTaskKey()).execute().items();
             for (Variable variable : variables) {
-                data.put(variable.getName(), variable.getValueAsType(Object.class));
+                String name = variable.getName();
+                Long scope = variable.getScopeKey();
+                if (!data.containsKey(name)
+                        || isPreferredScope(
+                                scope, scopes.get(name), task.getElementInstanceKey(), task.getProcessInstanceKey())) {
+                    data.put(name, coerceVariable(variable));
+                    scopes.put(name, scope);
+                }
             }
         } catch (RuntimeException ex) {
-            throw new ProcessIntegrationException("Failed to load task variables for " + taskKey, ex);
+            throw new ProcessIntegrationException("Failed to load task variables for " + task.getUserTaskKey(), ex);
         }
         return data;
+    }
+
+    private static boolean isPreferredScope(
+            Long candidate, Long current, Long elementInstanceKey, Long processInstanceKey) {
+        if (candidate == null) {
+            return false;
+        }
+        if (current == null) {
+            return true;
+        }
+        if (candidate.equals(elementInstanceKey) && !current.equals(elementInstanceKey)) {
+            return true;
+        }
+        if (current.equals(elementInstanceKey)) {
+            return false;
+        }
+        boolean candidateLocal = processInstanceKey == null || !candidate.equals(processInstanceKey);
+        boolean currentLocal = processInstanceKey == null || !current.equals(processInstanceKey);
+        if (candidateLocal != currentLocal) {
+            return candidateLocal;
+        }
+        return candidate > current;
+    }
+
+    private static Object coerceVariable(Variable variable) {
+        Object typed = variable.getValueAsType(Object.class);
+        if (typed instanceof String text) {
+            return stripJsonQuotes(text);
+        }
+        return typed != null ? typed : stripJsonQuotes(variable.getValue());
     }
 
     private Map<String, Object> dispatch(

@@ -12,6 +12,21 @@
       <bpmn:outgoing>Flow_ToProcessCandidates</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:subProcess id="SubProcess_ProcessCandidate" name="Process Candidate Item">
+      <bpmn:extensionElements>
+        <!-- Local shadows so parallel MI instances do not overwrite each other's job outputs. -->
+        <zeebe:ioMapping>
+          <zeebe:input source="=itemId" target="itemId" />
+          <zeebe:input source="=null" target="recommendationId" />
+          <zeebe:input source="=null" target="recommendationOutcome" />
+          <zeebe:input source="=false" target="replenishmentRequired" />
+          <zeebe:input source="=null" target="onHandQuantity" />
+          <zeebe:input source="=null" target="reorderLevel" />
+          <zeebe:input source="=null" target="openPurchaseQuantity" />
+          <zeebe:input source="=null" target="purchaseOrderId" />
+          <zeebe:input source="=null" target="poNumber" />
+          <zeebe:output source="=true" target="candidateProcessed" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_ToProcessCandidates</bpmn:incoming>
       <bpmn:outgoing>Flow_ToBatchComplete</bpmn:outgoing>
       <bpmn:multiInstanceLoopCharacteristics>
@@ -25,6 +40,12 @@
       <bpmn:serviceTask id="ServiceTask_CheckReplenishment" name="Check Replenishment Requirement">
         <bpmn:extensionElements>
           <zeebe:taskDefinition type="check-replenishment" />
+          <zeebe:ioMapping>
+            <zeebe:output source="=onHandQuantity" target="onHandQuantity" />
+            <zeebe:output source="=reorderLevel" target="reorderLevel" />
+            <zeebe:output source="=openPurchaseQuantity" target="openPurchaseQuantity" />
+            <zeebe:output source="=replenishmentRequired" target="replenishmentRequired" />
+          </zeebe:ioMapping>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToCheckReplenishment</bpmn:incoming>
         <bpmn:outgoing>Flow_ToReplenishmentRequired</bpmn:outgoing>
@@ -40,6 +61,9 @@
       <bpmn:serviceTask id="ServiceTask_CreateRecommendation" name="Create Recommendation (AI)">
         <bpmn:extensionElements>
           <zeebe:taskDefinition type="create-recommendation" />
+          <zeebe:ioMapping>
+            <zeebe:output source="=recommendationId" target="recommendationId" />
+          </zeebe:ioMapping>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_Required</bpmn:incoming>
         <bpmn:outgoing>Flow_ToReviewRecommendation</bpmn:outgoing>
@@ -48,6 +72,11 @@
         <bpmn:extensionElements>
           <zeebe:userTask />
           <zeebe:assignmentDefinition candidateGroups="INVENTORY_PLANNER" />
+          <zeebe:ioMapping>
+            <zeebe:input source="=itemId" target="itemId" />
+            <zeebe:input source="=recommendationId" target="recommendationId" />
+            <zeebe:output source="=recommendationOutcome" target="recommendationOutcome" />
+          </zeebe:ioMapping>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_ToReviewRecommendation</bpmn:incoming>
         <bpmn:outgoing>Flow_ToRecommendationOutcome</bpmn:outgoing>
@@ -63,6 +92,10 @@
       <bpmn:serviceTask id="ServiceTask_PrepareHandoff" name="Prepare PO Handoff">
         <bpmn:extensionElements>
           <zeebe:taskDefinition type="prepare-po-handoff" />
+          <zeebe:ioMapping>
+            <zeebe:output source="=purchaseOrderId" target="purchaseOrderId" />
+            <zeebe:output source="=poNumber" target="poNumber" />
+          </zeebe:ioMapping>
         </bpmn:extensionElements>
         <bpmn:incoming>Flow_RecommendationAccepted</bpmn:incoming>
         <bpmn:outgoing>Flow_ToHandoffComplete</bpmn:outgoing>

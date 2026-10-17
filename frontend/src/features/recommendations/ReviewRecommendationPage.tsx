@@ -215,11 +215,23 @@ export function ReviewRecommendationPage({ recommendationId, taskKey, allowedAct
               </p>
             </>
           ) : (
-            <p className="muted">
-              {taskKey
-                ? "This recommendation is no longer pending review."
-                : "Complete this from Inbox when a review task is assigned."}
-            </p>
+            <>
+              <p className="muted">
+                {taskKey
+                  ? "This recommendation is no longer pending review."
+                  : "Complete this from Inbox when a review task is assigned."}
+              </p>
+              {taskKey ? (
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void submit(rec.status === "REJECTED" ? "REJECT" : "ACCEPT")}
+                >
+                  Close task
+                </button>
+              ) : null}
+            </>
           )}
           <p>
             <Link to="/recommendations">Back to recommendations</Link>

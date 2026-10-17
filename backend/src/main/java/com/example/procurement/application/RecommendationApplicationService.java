@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -103,12 +104,41 @@ public class RecommendationApplicationService {
         }
     }
 
+    /**
+     * Parallel multi-instance review tasks share a process-level {@code recommendationId} unless
+     * BPMN local mappings are present. {@code itemId} is the MI input element and stays per-instance,
+     * so it is the authoritative lookup for the current and already-running batches.
+     */
+    @Transactional(readOnly = true)
+    public UUID resolveReviewRecommendationId(Object itemIdValue, Object recommendationIdValue) {
+        UUID itemId = parseUuid(itemIdValue);
+        if (itemId != null) {
+            Optional<Recommendation> pending = recommendationRepository.findTopByItemIdAndStatusOrderByCreatedAtDesc(
+                    itemId, RecommendationStatus.PENDING_REVIEW);
+            if (pending.isPresent()) {
+                return pending.get().getId();
+            }
+            Optional<Recommendation> latest = recommendationRepository.findTopByItemIdOrderByCreatedAtDesc(itemId);
+            if (latest.isPresent()) {
+                return latest.get().getId();
+            }
+        }
+        UUID fromTask = parseUuid(recommendationIdValue);
+        if (fromTask == null) {
+            throw new BusinessValidationException("Task is missing recommendationId");
+        }
+        return fromTask;
+    }
+
     /** UserTask_ReviewRecommendation completion (plan section 7). */
     @Transactional
     public Map<String, Object> recordReviewDecision(
             UUID recommendationId, String action, Map<String, Object> edits, String actingUserId) {
         Recommendation recommendation = recommendationRepository.findById(recommendationId)
                 .orElseThrow(() -> new NotFoundException("Recommendation not found: " + recommendationId));
+        if (recommendation.getStatus() != RecommendationStatus.PENDING_REVIEW) {
+            return Map.of("recommendationOutcome", recommendation.getStatus().name());
+        }
 
         switch (action) {
             case "ACCEPT" -> recommendation.setStatus(RecommendationStatus.ACCEPTED);
@@ -167,6 +197,27 @@ public class RecommendationApplicationService {
                 recommendation.getRiskLevel(),
                 recommendation.getRationale(),
                 recommendation.getStatus());
+    }
+
+    private static UUID parseUuid(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        String raw = value.toString().trim();
+        if (raw.length() >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
+            raw = raw.substring(1, raw.length() - 1);
+        }
+        if (raw.isBlank() || "null".equalsIgnoreCase(raw)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private void applyEdits(Recommendation recommendation, Map<String, Object> edits) {
