@@ -4,6 +4,7 @@ import { listInventory, listSuppliers } from "../../api/catalogApi";
 import { getRecommendation } from "../../api/recommendationsApi";
 import { completeTask } from "../../api/tasksApi";
 import { qty } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -18,8 +19,22 @@ interface Props {
   allowedActions?: string[];
 }
 
+function recommendationMessage(action: string): string {
+  if (action === "ACCEPT") {
+    return "Recommendation accepted successfully.";
+  }
+  if (action === "MODIFY_AND_ACCEPT") {
+    return "Recommendation updated and accepted successfully.";
+  }
+  if (action === "REJECT") {
+    return "Recommendation rejected.";
+  }
+  return "Task submitted successfully.";
+}
+
 export function ReviewRecommendationPage({ recommendationId, taskKey, allowedActions = [] }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(async () => {
     const [recommendation, items, suppliers] = await Promise.all([
       getRecommendation(recommendationId),
@@ -54,6 +69,7 @@ export function ReviewRecommendationPage({ recommendationId, taskKey, allowedAct
         },
         idempotencyKey,
       );
+      notifySuccess(recommendationMessage(action));
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to complete task");

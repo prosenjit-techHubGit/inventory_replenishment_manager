@@ -4,6 +4,7 @@ import { listSuppliers } from "../../api/catalogApi";
 import { getPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { completeTask } from "../../api/tasksApi";
 import { money } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -19,6 +20,7 @@ interface Props {
 
 export function RevisePurchaseOrderPage({ purchaseOrderId, taskKey }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(async () => {
     const [detail, suppliers] = await Promise.all([getPurchaseOrder(purchaseOrderId), listSuppliers()]);
     return { detail, suppliers: suppliers.filter((supplier) => supplier.active) };
@@ -54,6 +56,7 @@ export function RevisePurchaseOrderPage({ purchaseOrderId, taskKey }: Props) {
         },
         idempotencyKey,
       );
+      notifySuccess("Purchase order revision submitted successfully.");
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to submit revision");

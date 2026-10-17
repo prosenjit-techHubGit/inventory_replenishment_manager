@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { getPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { completeTask } from "../../api/tasksApi";
 import { dateLabel, money, qty, sourceLabel } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -18,8 +19,22 @@ interface Props {
   allowedActions: string[];
 }
 
+function approvalMessage(action: string): string {
+  if (action === "APPROVE") {
+    return "Purchase order approved successfully.";
+  }
+  if (action === "RETURN_FOR_REVISION") {
+    return "Purchase order returned for revision.";
+  }
+  if (action === "REJECT") {
+    return "Purchase order rejected.";
+  }
+  return "Task submitted successfully.";
+}
+
 export function ReviewPurchaseOrderPage({ purchaseOrderId, taskKey, taskName, allowedActions }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(() => getPurchaseOrder(purchaseOrderId), [purchaseOrderId]);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,6 +46,7 @@ export function ReviewPurchaseOrderPage({ purchaseOrderId, taskKey, taskName, al
     setActionError(null);
     try {
       await completeTask(taskKey, action, { comment }, idempotencyKey);
+      notifySuccess(approvalMessage(action));
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to complete approval");

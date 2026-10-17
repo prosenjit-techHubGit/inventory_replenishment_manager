@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listInventory, listSuppliers } from "../../api/catalogApi";
 import { createPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { money } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -13,6 +14,7 @@ import type { Urgency } from "../../models/types";
 
 export function CreatePurchaseOrderPage() {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(async () => {
     const [items, suppliers] = await Promise.all([listInventory(), listSuppliers()]);
     return { items, suppliers: suppliers.filter((supplier) => supplier.active) };
@@ -71,6 +73,7 @@ export function CreatePurchaseOrderPage() {
         },
         idempotencyKey,
       );
+      notifySuccess(`Purchase order ${created.poNumber} created successfully.`);
       navigate(`/purchase-orders/${created.purchaseOrderId}`);
     } catch (err) {
       setFormError(err instanceof HttpError ? err.message : "Unable to create purchase order");

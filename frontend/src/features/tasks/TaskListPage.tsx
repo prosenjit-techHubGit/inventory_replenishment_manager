@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { claimTask, listTasks } from "../../api/tasksApi";
 import { useRole } from "../../app/RoleContext";
 import { ageLabel, taskGroup } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { LoadingState } from "../../components/LoadingState";
@@ -13,6 +14,7 @@ const FILTERS = ["All", "Recommendations", "Approvals", "Fulfillment"] as const;
 
 export function TaskListPage() {
   const { role } = useRole();
+  const { notifySuccess } = useToast();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [actionError, setActionError] = useState<string | null>(null);
   const { data, error, loading, reload } = useLoad(() => listTasks(role.id), [role.id]);
@@ -29,6 +31,7 @@ export function TaskListPage() {
     setActionError(null);
     try {
       await claimTask(taskKey);
+      notifySuccess("Task claimed successfully.");
       await reload();
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to claim task");

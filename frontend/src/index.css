@@ -569,6 +569,81 @@ table.data th {
   color: #444;
 }
 
+.toast-host {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 40;
+  max-width: min(420px, calc(100vw - 48px));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--ltm-carbon);
+  color: var(--ltm-white);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  animation: toast-in 180ms ease-out;
+}
+
+.toast-leaving {
+  animation: toast-out 250ms ease-in forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.toast-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4caf7a;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.toast-dismiss {
+  background: transparent;
+  border: 0;
+  color: #d1d1d1;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.toast-dismiss:hover {
+  color: var(--ltm-white);
+}
+
 .loading,
 .empty {
   color: #777;

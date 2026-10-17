@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { completeTask } from "../../api/tasksApi";
 import { qty } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -18,6 +19,7 @@ interface Props {
 
 export function GoodsReceiptPage({ purchaseOrderId, taskKey }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(() => getPurchaseOrder(purchaseOrderId), [purchaseOrderId]);
   const [receivedQuantity, setReceivedQuantity] = useState<string | null>(null);
   const [acceptedQuantity, setAcceptedQuantity] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function GoodsReceiptPage({ purchaseOrderId, taskKey }: Props) {
         { receivedQuantity: received, acceptedQuantity: accepted, rejectedQuantity: rejected, receiptDate, notes },
         idempotencyKey,
       );
+      notifySuccess("Goods receipt recorded successfully.");
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to record receipt");

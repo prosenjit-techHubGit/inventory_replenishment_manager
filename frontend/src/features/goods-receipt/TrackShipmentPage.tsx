@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { completeTask } from "../../api/tasksApi";
 import { dateLabel } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -18,6 +19,7 @@ interface Props {
 
 export function TrackShipmentPage({ purchaseOrderId, taskKey }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(() => getPurchaseOrder(purchaseOrderId), [purchaseOrderId]);
   const [trackingReference, setTrackingReference] = useState("");
   const [actualDeliveryDate, setActualDeliveryDate] = useState(new Date().toISOString().slice(0, 10));
@@ -35,6 +37,7 @@ export function TrackShipmentPage({ purchaseOrderId, taskKey }: Props) {
         { trackingReference, actualDeliveryDate },
         idempotencyKey,
       );
+      notifySuccess("Delivery recorded successfully.");
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to record delivery");

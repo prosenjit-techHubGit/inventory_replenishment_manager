@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getPurchaseOrder } from "../../api/purchaseOrdersApi";
 import { completeTask } from "../../api/tasksApi";
 import { dateLabel, money, qty } from "../../app/format";
+import { useToast } from "../../app/ToastContext";
 import { useLoad } from "../../app/useLoad";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { FormField } from "../../components/FormField";
@@ -17,8 +18,22 @@ interface Props {
   allowedActions: string[];
 }
 
+function confirmationMessage(status: string): string {
+  if (status === "CONFIRMED") {
+    return "Purchase order confirmed successfully.";
+  }
+  if (status === "REVISED_DATE") {
+    return "Revised delivery date submitted successfully.";
+  }
+  if (status === "REJECTED") {
+    return "Purchase order confirmation rejected.";
+  }
+  return "Task submitted successfully.";
+}
+
 export function SupplierConfirmationPage({ purchaseOrderId, taskKey, allowedActions }: Props) {
   const navigate = useNavigate();
+  const { notifySuccess } = useToast();
   const { data, error, loading } = useLoad(() => getPurchaseOrder(purchaseOrderId), [purchaseOrderId]);
   const [status, setStatus] = useState<"CONFIRMED" | "REVISED_DATE" | "REJECTED">("CONFIRMED");
   const [revisedDeliveryDate, setRevisedDeliveryDate] = useState("");
@@ -47,6 +62,7 @@ export function SupplierConfirmationPage({ purchaseOrderId, taskKey, allowedActi
         },
         idempotencyKey,
       );
+      notifySuccess(confirmationMessage(status));
       navigate("/tasks");
     } catch (err) {
       setActionError(err instanceof HttpError ? err.message : "Unable to submit confirmation");
